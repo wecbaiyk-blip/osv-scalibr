@@ -56,10 +56,18 @@ func Add(enrichedPkgs []*extractor.Package, inv *inventory.Inventory, pluginName
 	for _, pkg := range enrichedPkgs {
 		indexPkg, ok := existingPackages[pkg.Name]
 		if ok {
-			// This dependency is in manifest, update the version and plugins.
+			// This dependency is in manifest, update the version, plugins and parent IDs.
 			i := indexPkg.Index
 			inv.Packages[i].Version = pkg.Version
 			inv.Packages[i].Plugins = append(inv.Packages[i].Plugins, pluginName)
+
+			if len(pkg.ParentIDs) > 0 && inv.Packages[i].ParentIDs == nil {
+				inv.Packages[i].ParentIDs = make(map[string]bool)
+			}
+
+			for parentID := range pkg.ParentIDs {
+				inv.Packages[i].ParentIDs[parentID] = true
+			}
 		} else {
 			// This dependency is not found in manifest, so it's a transitive dependency.
 			inv.Packages = append(inv.Packages, pkg)
