@@ -65,13 +65,25 @@ func PackageToProto(pkg *extractor.Package) (*spb.Package, error) {
 		}
 	}
 
-	id, err := uuid.NewRandom()
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate UUID for %q package %q version %q: %w", pkg.Ecosystem().String(), pkg.Name, pkg.Version, err)
+	var id string
+	if pkg.ID == "" {
+		randomID, err := uuid.NewRandom()
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate UUID for %q package %q version %q: %w", pkg.Ecosystem().String(), pkg.Name, pkg.Version, err)
+		}
+		id = randomID.String()
+	} else {
+		id = pkg.ID
+	}
+
+	var parentIDs []string
+	for id := range pkg.ParentIDs {
+		parentIDs = append(parentIDs, id)
 	}
 
 	packageProto := &spb.Package{
-		Id:         id.String(),
+		Id:         id,
+		ParentIds:  parentIDs,
 		Name:       pkg.Name,
 		Version:    pkg.Version,
 		SourceCode: sourceCodeIdentifierToProto(pkg.SourceCode),

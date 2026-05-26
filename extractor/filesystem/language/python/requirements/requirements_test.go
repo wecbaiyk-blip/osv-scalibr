@@ -613,6 +613,14 @@ func TestExtract(t *testing.T) {
 				t.Fatalf("Extract(%s): %v", tt.path, err)
 			}
 
+			// Clear IDs to allow for comparison, but check that they are set.
+			for _, pkg := range got.Packages {
+				if pkg.ID == "" {
+					t.Errorf("Extract(%s) package %v has empty ID", tt.path, pkg.Name)
+				}
+				pkg.ID = ""
+			}
+
 			want := inventory.Inventory{Packages: tt.wantPackages}
 			if diff := cmp.Diff(want, got); diff != "" {
 				t.Errorf("Extract(%s) (-want +got):\n%s", tt.path, diff)
