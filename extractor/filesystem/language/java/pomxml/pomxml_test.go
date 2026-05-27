@@ -570,6 +570,14 @@ func TestExtractor_Extract(t *testing.T) {
 
 			got, err := extr.Extract(t.Context(), &scanInput)
 
+			// Clear IDs to allow for comparison, but check that they are set.
+			for _, pkg := range got.Packages {
+				if pkg.ID == "" {
+					t.Errorf("Extracted package %v has empty ID", pkg.Name)
+				}
+				pkg.ID = ""
+			}
+
 			if diff := cmp.Diff(tt.WantErr, err, cmpopts.EquateErrors()); diff != "" {
 				t.Errorf("%s.Extract(%q) error diff (-want +got):\n%s", extr.Name(), tt.InputConfig.Path, diff)
 				return

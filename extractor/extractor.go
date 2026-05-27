@@ -49,6 +49,10 @@ type Package struct {
 	// In cases when the exact name type used is important (e.g. when matching
 	// against vuln feeds) you should use the specific name field from the Metadata.
 	Name string
+	// Unique identifier of the package.
+	ID string
+	// Parent package IDs for transitive dependencies.
+	ParentIDs map[string]bool
 	// The version of this package.
 	Version string
 	// Source code level package identifiers.

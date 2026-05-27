@@ -28,6 +28,7 @@ import (
 	"strings"
 
 	"deps.dev/util/maven"
+	"github.com/google/uuid"
 
 	"github.com/google/osv-scalibr/clients/datasource"
 	"github.com/google/osv-scalibr/extractor"
@@ -181,8 +182,14 @@ func (e Extractor) Extract(ctx context.Context, input *filesystem.ScanInput) (in
 			InputPath:   input.Path,
 		})
 
+		randomID, err := uuid.NewRandom()
+		if err != nil {
+			return inventory.Inventory{}, fmt.Errorf("failed to generate random UUID: %w", err)
+		}
+
 		pkgDetails := &extractor.Package{
 			Name:     dep.Name(),
+			ID:       randomID.String(),
 			Version:  parseResolvedVersion(dep.Version),
 			PURLType: purl.TypeMaven,
 			Location: extractor.LocationFromPathAndLine(filepath.ToSlash(input.Path), lineNum),

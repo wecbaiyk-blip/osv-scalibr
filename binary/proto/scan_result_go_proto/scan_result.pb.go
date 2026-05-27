@@ -280,25 +280,31 @@ func (SensitivityLevel) EnumDescriptor() ([]byte, []int) {
 type Likelihood int32
 
 const (
-	Likelihood_LIKELIHOOD_UNSPECIFIED Likelihood = 0
-	Likelihood_LIKELIHOOD_UNLIKELY    Likelihood = 2
-	Likelihood_LIKELIHOOD_LIKELY      Likelihood = 4
-	Likelihood_LIKELIHOOD_VERY_LIKELY Likelihood = 5
+	Likelihood_LIKELIHOOD_UNSPECIFIED   Likelihood = 0
+	Likelihood_LIKELIHOOD_VERY_UNLIKELY Likelihood = 1
+	Likelihood_LIKELIHOOD_UNLIKELY      Likelihood = 2
+	Likelihood_LIKELIHOOD_POSSIBLE      Likelihood = 3
+	Likelihood_LIKELIHOOD_LIKELY        Likelihood = 4
+	Likelihood_LIKELIHOOD_VERY_LIKELY   Likelihood = 5
 )
 
 // Enum value maps for Likelihood.
 var (
 	Likelihood_name = map[int32]string{
 		0: "LIKELIHOOD_UNSPECIFIED",
+		1: "LIKELIHOOD_VERY_UNLIKELY",
 		2: "LIKELIHOOD_UNLIKELY",
+		3: "LIKELIHOOD_POSSIBLE",
 		4: "LIKELIHOOD_LIKELY",
 		5: "LIKELIHOOD_VERY_LIKELY",
 	}
 	Likelihood_value = map[string]int32{
-		"LIKELIHOOD_UNSPECIFIED": 0,
-		"LIKELIHOOD_UNLIKELY":    2,
-		"LIKELIHOOD_LIKELY":      4,
-		"LIKELIHOOD_VERY_LIKELY": 5,
+		"LIKELIHOOD_UNSPECIFIED":   0,
+		"LIKELIHOOD_VERY_UNLIKELY": 1,
+		"LIKELIHOOD_UNLIKELY":      2,
+		"LIKELIHOOD_POSSIBLE":      3,
+		"LIKELIHOOD_LIKELY":        4,
+		"LIKELIHOOD_VERY_LIKELY":   5,
 	}
 )
 
@@ -876,8 +882,10 @@ type Package struct {
 	// Software licenses information
 	Licenses                      []string                               `protobuf:"bytes,52,rep,name=licenses,proto3" json:"licenses,omitempty"`
 	ContainerImageMetadataIndexes *Package_ContainerImageMetadataIndexes `protobuf:"bytes,57,opt,name=container_image_metadata_indexes,json=containerImageMetadataIndexes,proto3,oneof" json:"container_image_metadata_indexes,omitempty"`
-	unknownFields                 protoimpl.UnknownFields
-	sizeCache                     protoimpl.SizeCache
+	// The ID of the parent package, if this package is a transitive dependency.
+	ParentIds     []string `protobuf:"bytes,70,rep,name=parent_ids,json=parentIds,proto3" json:"parent_ids,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Package) Reset() {
@@ -1392,6 +1400,13 @@ func (x *Package) GetLicenses() []string {
 func (x *Package) GetContainerImageMetadataIndexes() *Package_ContainerImageMetadataIndexes {
 	if x != nil {
 		return x.ContainerImageMetadataIndexes
+	}
+	return nil
+}
+
+func (x *Package) GetParentIds() []string {
+	if x != nil {
+		return x.ParentIds
 	}
 	return nil
 }
@@ -13117,7 +13132,7 @@ const file_proto_scan_result_proto_rawDesc = "" +
 	"\x06status\x18\x03 \x01(\v2\x13.scalibr.ScanStatusR\x06status\"M\n" +
 	"\tFileError\x12\x1b\n" +
 	"\tfile_path\x18\x01 \x01(\tR\bfilePath\x12#\n" +
-	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage\"\xb9!\n" +
+	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage\"\xd8!\n" +
 	"\aPackage\x12\x0e\n" +
 	"\x02id\x18< \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\v \x01(\tR\x04name\x12\x18\n" +
@@ -13175,7 +13190,9 @@ const file_proto_scan_result_proto_rawDesc = "" +
 	"\x0espack_metadata\x18C \x01(\v2\x1d.scalibr.SpackPackageMetadataH\x00R\rspackMetadata\x12[\n" +
 	"\x16exploitability_signals\x183 \x03(\v2$.scalibr.PackageExploitabilitySignalR\x15exploitabilitySignals\x12\x1a\n" +
 	"\blicenses\x184 \x03(\tR\blicenses\x12|\n" +
-	" container_image_metadata_indexes\x189 \x01(\v2..scalibr.Package.ContainerImageMetadataIndexesH\x02R\x1dcontainerImageMetadataIndexes\x88\x01\x01\x1at\n" +
+	" container_image_metadata_indexes\x189 \x01(\v2..scalibr.Package.ContainerImageMetadataIndexesH\x02R\x1dcontainerImageMetadataIndexes\x88\x01\x01\x12\x1d\n" +
+	"\n" +
+	"parent_ids\x18F \x03(\tR\tparentIds\x1at\n" +
 	"\x1dContainerImageMetadataIndexes\x122\n" +
 	"\x15container_image_index\x18\x01 \x01(\x05R\x13containerImageIndex\x12\x1f\n" +
 	"\vlayer_index\x18\x02 \x01(\x05R\n" +
@@ -14027,11 +14044,13 @@ const file_proto_scan_result_proto_rawDesc = "" +
 	"\x15SENSITIVITY_LEVEL_LOW\x10\x01\x12\x1d\n" +
 	"\x19SENSITIVITY_LEVEL_UNKNOWN\x10\x02\x12\x1e\n" +
 	"\x1aSENSITIVITY_LEVEL_MODERATE\x10\x03\x12\x1a\n" +
-	"\x16SENSITIVITY_LEVEL_HIGH\x10\x04*t\n" +
+	"\x16SENSITIVITY_LEVEL_HIGH\x10\x04*\xab\x01\n" +
 	"\n" +
 	"Likelihood\x12\x1a\n" +
-	"\x16LIKELIHOOD_UNSPECIFIED\x10\x00\x12\x17\n" +
-	"\x13LIKELIHOOD_UNLIKELY\x10\x02\x12\x15\n" +
+	"\x16LIKELIHOOD_UNSPECIFIED\x10\x00\x12\x1c\n" +
+	"\x18LIKELIHOOD_VERY_UNLIKELY\x10\x01\x12\x17\n" +
+	"\x13LIKELIHOOD_UNLIKELY\x10\x02\x12\x17\n" +
+	"\x13LIKELIHOOD_POSSIBLE\x10\x03\x12\x15\n" +
 	"\x11LIKELIHOOD_LIKELY\x10\x04\x12\x1a\n" +
 	"\x16LIKELIHOOD_VERY_LIKELY\x10\x05BCP\x01Z?github.com/google/osv-scalibr/binary/proto/scan_result_go_protob\x06proto3"
 

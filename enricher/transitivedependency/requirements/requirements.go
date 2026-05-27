@@ -36,6 +36,7 @@ import (
 	"github.com/google/osv-scalibr/log"
 	"github.com/google/osv-scalibr/plugin"
 	"github.com/google/osv-scalibr/purl"
+	"github.com/google/uuid"
 )
 
 const (
@@ -46,6 +47,8 @@ const (
 // Enricher performs dependency resolution for requirements.txt.
 type Enricher struct {
 	resolve.Client
+
+	UseDummyIDsForTesting bool
 }
 
 // Name returns the name of the enricher.
@@ -191,17 +194,59 @@ func (e Enricher) resolve(ctx context.Context, path string, list []*extractor.Pa
 		return nil, errors.New(g.Error)
 	}
 
+	nameToID := make(map[string]string)
+	for _, pkg := range list {
+		nameToID[pkg.Name] = pkg.ID
+	}
+
+	for i := 1; i < len(g.Nodes); i++ {
+		node := g.Nodes[i]
+		if _, ok := nameToID[node.Version.Name]; !ok {
+			if e.UseDummyIDsForTesting {
+				nameToID[node.Version.Name] = "dummy-id-" + node.Version.Name
+				continue
+			}
+			randomID, err := uuid.NewRandom()
+			if err != nil {
+				return nil, fmt.Errorf("failed to generate random UUID: %w", err)
+			}
+			nameToID[node.Version.Name] = randomID.String()
+		}
+	}
+
 	pkgs := make([]*extractor.Package, len(g.Nodes)-1)
 	for i := 1; i < len(g.Nodes); i++ {
 		// Ignore the first node which is the root.
 		node := g.Nodes[i]
+
+		parents := make(map[string]bool)
+		for _, edge := range g.Edges {
+			if edge.To == resolve.NodeID(i) {
+				if int(edge.From) >= len(g.Nodes) {
+					return nil, fmt.Errorf("parent id %v is out of range for nodes (length %v)", edge.From, len(g.Nodes))
+				}
+				parentPkgName := g.Nodes[edge.From].Version.Name
+				if parentPkgName == "" {
+					parents["root"] = true
+					continue
+				}
+				parentPkgID, ok := nameToID[parentPkgName]
+				if !ok {
+					return nil, fmt.Errorf("parent package %q not found in known packages", parentPkgName)
+				}
+				parents[parentPkgID] = true
+			}
+		}
+
 		pkgs[i-1] = &extractor.Package{
-			Name:     node.Version.Name,
-			Version:  node.Version.Version,
-			PURLType: purl.TypePyPi,
-			ScanRoot: scanRoot,
-			Location: extractor.LocationFromPath(path),
-			Plugins:  []string{Name},
+			ID:        nameToID[node.Version.Name],
+			Name:      node.Version.Name,
+			ParentIDs: parents,
+			Version:   node.Version.Version,
+			PURLType:  purl.TypePyPi,
+			ScanRoot:  scanRoot,
+			Location:  extractor.LocationFromPath(path),
+			Plugins:   []string{Name},
 		}
 	}
 	return pkgs, nil

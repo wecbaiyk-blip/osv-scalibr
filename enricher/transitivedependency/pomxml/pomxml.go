@@ -41,6 +41,7 @@ import (
 	"github.com/google/osv-scalibr/log"
 	"github.com/google/osv-scalibr/plugin"
 	"github.com/google/osv-scalibr/purl"
+	"github.com/google/uuid"
 )
 
 const (
@@ -50,8 +51,9 @@ const (
 
 // Enricher performs dependency resolution for pom.xml.
 type Enricher struct {
-	DepClient   resolve.Client
-	MavenClient *datasource.MavenRegistryAPIClient
+	DepClient             resolve.Client
+	MavenClient           *datasource.MavenRegistryAPIClient
+	UseDummyIDsForTesting bool
 }
 
 // Name returns the name of the enricher.
@@ -137,7 +139,19 @@ func (e Enricher) Enrich(ctx context.Context, input *enricher.ScanInput, inv *in
 			continue
 		}
 
-		enrichedInv, err := e.extract(ctx, &filesystem.ScanInput{
+		packagesWithIndex := make([]internal.PackageWithIndex, 0, len(pkgMap))
+		for _, indexPkg := range pkgMap {
+			packagesWithIndex = append(packagesWithIndex, indexPkg)
+		}
+		slices.SortFunc(packagesWithIndex, func(a, b internal.PackageWithIndex) int {
+			return a.Index - b.Index
+		})
+		packages := make([]*extractor.Package, 0, len(packagesWithIndex))
+		for _, indexPkg := range packagesWithIndex {
+			packages = append(packages, indexPkg.Pkg)
+		}
+
+		enrichedInv, err := e.extract(ctx, packages, &filesystem.ScanInput{
 			Path:   path,
 			Reader: f,
 			Info:   nil,
@@ -157,7 +171,7 @@ func (e Enricher) Enrich(ctx context.Context, input *enricher.ScanInput, inv *in
 	return errs
 }
 
-func (e Enricher) extract(ctx context.Context, input *filesystem.ScanInput) (inventory.Inventory, error) {
+func (e Enricher) extract(ctx context.Context, packages []*extractor.Package, input *filesystem.ScanInput) (inventory.Inventory, error) {
 	var project maven.Project
 	if err := datasource.NewMavenDecoder(input.Reader).Decode(&project); err != nil {
 		return inventory.Inventory{}, fmt.Errorf("could not extract: %w", err)
@@ -277,6 +291,25 @@ func (e Enricher) extract(ctx context.Context, input *filesystem.ScanInput) (inv
 		return inventory.Inventory{}, fmt.Errorf("failed resolving %v: %s", root, g.Error)
 	}
 
+	nameToID := make(map[string]string)
+	for _, pkg := range packages {
+		nameToID[pkg.Name] = pkg.ID
+	}
+	for i := 1; i < len(g.Nodes); i++ {
+		node := g.Nodes[i]
+		if _, ok := nameToID[node.Version.Name]; !ok {
+			if e.UseDummyIDsForTesting {
+				nameToID[node.Version.Name] = "dummy-id-" + node.Version.Name
+				continue
+			}
+			randomID, err := uuid.NewRandom()
+			if err != nil {
+				return inventory.Inventory{}, fmt.Errorf("failed to generate random UUID: %w", err)
+			}
+			nameToID[node.Version.Name] = randomID.String()
+		}
+	}
+
 	details := map[string]*extractor.Package{}
 	for i := 1; i < len(g.Nodes); i++ {
 		// Ignore the first node which is the root.
@@ -297,10 +330,32 @@ func (e Enricher) extract(ctx context.Context, input *filesystem.ScanInput) (inv
 			}
 			break
 		}
+
+		parents := make(map[string]bool)
+		for _, edge := range g.Edges {
+			if edge.To == resolve.NodeID(i) {
+				if int(edge.From) >= len(g.Nodes) {
+					return inventory.Inventory{}, fmt.Errorf("parent id %v is out of range for nodes (length %v)", edge.From, len(g.Nodes))
+				}
+				if edge.From == 0 {
+					parents["root"] = true
+					continue
+				}
+				parentPkgName := g.Nodes[edge.From].Version.Name
+				parentPkgID, ok := nameToID[parentPkgName]
+				if !ok {
+					return inventory.Inventory{}, fmt.Errorf("parent package %q not found in known packages", parentPkgName)
+				}
+				parents[parentPkgID] = true
+			}
+		}
+
 		pkg := extractor.Package{
-			Name:     node.Version.Name,
-			Version:  node.Version.Version,
-			PURLType: purl.TypeMaven,
+			Name:      node.Version.Name,
+			ID:        nameToID[node.Version.Name],
+			ParentIDs: parents,
+			Version:   node.Version.Version,
+			PURLType:  purl.TypeMaven,
 			Metadata: &javalockfile.Metadata{
 				ArtifactID:   artifactID,
 				GroupID:      groupID,

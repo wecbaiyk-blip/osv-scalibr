@@ -18,6 +18,7 @@ package requirements
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"io"
 	"path/filepath"
 	"regexp"
@@ -32,6 +33,7 @@ import (
 	"github.com/google/osv-scalibr/plugin"
 	"github.com/google/osv-scalibr/purl"
 	"github.com/google/osv-scalibr/stats"
+	"github.com/google/uuid"
 
 	cpb "github.com/google/osv-scalibr/binary/proto/config_go_proto"
 )
@@ -253,7 +255,13 @@ func extractFromPath(reader io.Reader, path string) ([]*extractor.Package, pathQ
 			continue
 		}
 
+		randomID, err := uuid.NewRandom()
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to generate random UUID: %w", err)
+		}
+
 		pkgs = append(pkgs, &extractor.Package{
+			ID:       randomID.String(),
 			Name:     name,
 			Version:  version,
 			PURLType: purl.TypePyPi,
