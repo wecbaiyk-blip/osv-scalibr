@@ -22,6 +22,7 @@ import (
 	"io/fs"
 	"path"
 	"regexp"
+	"sort"
 
 	"github.com/google/osv-scalibr/extractor"
 	"github.com/google/osv-scalibr/extractor/filesystem"
@@ -120,9 +121,6 @@ func (e Extractor) Extract(ctx context.Context, input *filesystem.ScanInput) (in
 		return inventory.Inventory{},
 			fmt.Errorf("error during parsing the typescript file: %w", err)
 	}
-	for _, p := range pkgs {
-		p.Location = extractor.LocationFromPath(inputPath)
-	}
 
 	return inventory.Inventory{Packages: pkgs}, nil
 }
@@ -148,6 +146,11 @@ func hasDenoConfigInAncestors(fsys scalibrfs.FS, inputPath string, maxDepth int)
 	return false
 }
 
+type importMatch struct {
+	specifier string
+	line      int
+}
+
 func parseTypeScriptFile(ctx context.Context, inputPath string, reader io.Reader) ([]*extractor.Package, error) {
 	// Read entire content of TypeScript file
 	content, err := io.ReadAll(reader)
@@ -155,14 +158,15 @@ func parseTypeScriptFile(ctx context.Context, inputPath string, reader io.Reader
 		log.Debugf("TypeScript file %s read failed: %v", inputPath, err)
 		return nil, fmt.Errorf("failed to read TypeScript file: %w", err)
 	}
-	pkgsStr, err := findImportPaths(ctx, content)
+	matches, err := findImportPaths(ctx, content)
 	if err != nil {
 		return nil, err
 	}
 	var pkgs []*extractor.Package
-	for _, specifier := range pkgsStr {
-		pkg := denohelper.ParseImportSpecifier(specifier)
+	for _, m := range matches {
+		pkg := denohelper.ParseImportSpecifier(m.specifier)
 		if pkg != nil {
+			pkg.Location = extractor.LocationFromPathAndLine(inputPath, m.line)
 			pkgs = append(pkgs, pkg)
 		}
 	}
@@ -173,22 +177,42 @@ func parseTypeScriptFile(ctx context.Context, inputPath string, reader io.Reader
 
 // findImportPaths uses regexps to find import paths in TypeScript source code.
 //
-// returns a slice of import paths found in the source code.
-func findImportPaths(ctx context.Context, source []byte) ([]string, error) {
-	var packages []string
+// returns a slice of import matches found in the source code.
+func findImportPaths(ctx context.Context, source []byte) ([]importMatch, error) {
+	var results []importMatch
 
-	for _, re := range []*regexp.Regexp{importRe, dynamicImportRe} {
-		matches := re.FindAllSubmatch(source, -1)
-		for _, match := range matches {
-			if err := ctx.Err(); err != nil {
-				return packages, err
-			}
-			if len(match) < 2 {
-				continue
-			}
-			packages = append(packages, string(match[1]))
+	// 1. Precompute line starts in a single pass O(L)
+	lineStarts := []int{0}
+	for i, b := range source {
+		if b == '\n' {
+			lineStarts = append(lineStarts, i+1)
 		}
 	}
 
-	return packages, nil
+	// Helper to find line number in O(log L) using binary search
+	getLine := func(offset int) int {
+		idx := sort.Search(len(lineStarts), func(i int) bool {
+			return lineStarts[i] > offset
+		})
+		return idx
+	}
+
+	for _, re := range []*regexp.Regexp{importRe, dynamicImportRe} {
+		// Use FindAllSubmatchIndex to get [start, end, sub_start, sub_end]
+		matches := re.FindAllSubmatchIndex(source, -1)
+		for _, m := range matches {
+			if err := ctx.Err(); err != nil {
+				return results, err
+			}
+			if len(m) < 4 {
+				continue
+			}
+			specifier := string(source[m[2]:m[3]])
+			results = append(results, importMatch{
+				specifier: specifier,
+				line:      getLine(m[0]), // O(log L) lookup
+			})
+		}
+	}
+	return results, nil
 }
